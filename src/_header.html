@@ -1,0 +1,18 @@
+<!-- Shared header. Edit here, run `node script/build.js`, deploys to every page. -->
+<nav class="navbar navbar-expand bg-body-tertiary border-bottom">
+  <div class="container">
+    <a class="navbar-brand fw-semibold" href="./">ASA Tools</a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" data-nav="dragonhoard" href="./dragonhoard.html">Dragon Hoard</a>
+      <a class="nav-link" href="https://github.com/HowDoIPlayGameDev/asa-tools" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</nav>
+<script>
+  // Highlight the current page's nav link.
+  (function () {
+    const here = (location.pathname.split('/').pop() || 'index.html').replace(/\.html$/, '') || 'index';
+    const link = document.querySelector(`[data-nav="${here}"]`);
+    if (link) link.classList.add('active', 'fw-semibold');
+  })();
+</script>

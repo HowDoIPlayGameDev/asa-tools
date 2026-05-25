@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dragon Hoard Loot Calculator</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  /* Tiny additions Bootstrap doesn't cover. */
+  th[data-k] { cursor: pointer; user-select: none; }
+  th.sort-asc::after  { content: " ↑"; opacity: .6; }
+  th.sort-desc::after { content: " ↓"; opacity: .6; }
+  .stat-card .stat-k { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; opacity: .65; }
+  .stat-card .stat-v { font-size: 1.5rem; font-weight: 600; }
+  .empty { padding: 2rem; text-align: center; opacity: .6; }
+</style>
+</head>
+<body>
+<script>
+  // Apply OS theme before paint (avoids flash).
+  document.documentElement.setAttribute('data-bs-theme',
+    matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+</script>
+
+<!-- Shared header. Edit here, run `node script/build.js`, deploys to every page. -->
+<nav class="navbar navbar-expand bg-body-tertiary border-bottom">
+  <div class="container">
+    <a class="navbar-brand fw-semibold" href="./">ASA Tools</a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" data-nav="dragonhoard" href="./dragonhoard.html">Dragon Hoard</a>
+      <a class="nav-link" href="https://github.com/HowDoIPlayGameDev/asa-tools" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</nav>
+<script>
+  // Highlight the current page's nav link.
+  (function () {
+    const here = (location.pathname.split('/').pop() || 'index.html').replace(/\.html$/, '') || 'index';
+    const link = document.querySelector(`[data-nav="${here}"]`);
+    if (link) link.classList.add('active', 'fw-semibold');
+  })();
+</script>
+
+
+<main class="container my-4" style="max-width: 1100px;">
+
+  <div class="mb-4">
+    <h1 class="h3 mb-1">Dragon Hoard Loot Calculator</h1>
+    <p class="text-body-secondary mb-0">
+      Probabilities datamined from a live server. Quality scaling (XP → tier)
+      <a href="#caveat">isn't modeled</a>: these are "what items appear" rates,
+      not "at which quality."
+    </p>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-sm-6"><div class="card stat-card"><div class="card-body py-2"><div class="stat-k">Item Pool Size</div><div class="stat-v" id="poolSize">…</div></div></div></div>
+    <div class="col-sm-6"><div class="card stat-card"><div class="card-body py-2"><div class="stat-k">Visible Items</div><div class="stat-v" id="visibleCount">…</div></div></div></div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-6">
+          <label for="q" class="form-label small text-uppercase fw-semibold text-body-secondary mb-1">Search item name</label>
+          <input type="search" id="q" class="form-control" placeholder="e.g. tek sword, rex saddle, advanced bullet" autocomplete="off">
+        </div>
+        <div class="col-md-3">
+          <label for="view" class="form-label small text-uppercase fw-semibold text-body-secondary mb-1">Show me</label>
+          <select id="view" class="form-select">
+            <option value="perCrate">Chance per crate</option>
+            <option value="perItemSlot">Share of its category</option>
+            <option value="ePer100">Expected count per 100 crates</option>
+            <option value="cratesNeeded">Crates needed for ≥1 (90%)</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label for="form" class="form-label small text-uppercase fw-semibold text-body-secondary mb-1">Form</label>
+          <select id="form" class="form-select">
+            <option value="any">Item or blueprint</option>
+            <option value="item">Item only</option>
+            <option value="bp">Blueprint only</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <small class="text-body-secondary" id="viewHelp"></small>
+        </div>
+        <div class="col-12">
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary active" data-cat="">All</button>
+            <button type="button" class="btn btn-sm btn-outline-danger"    data-cat="Weapons">Weapons</button>
+            <button type="button" class="btn btn-sm btn-outline-primary"   data-cat="Armor">Armor</button>
+            <button type="button" class="btn btn-sm btn-outline-info"      data-cat="Saddles">Saddles</button>
+            <button type="button" class="btn btn-sm btn-outline-success"   data-cat="Kibbles">Kibbles</button>
+            <button type="button" class="btn btn-sm btn-outline-warning"   data-cat="Soups / Heals">Soups</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-cat="Arrows">Arrows</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-cat="Bullets">Bullets</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-cat="Special">Special</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table id="t" class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th data-k="item">Item</th>
+            <th data-k="entry">Category</th>
+            <th data-k="avgQty" class="text-end">Quantity</th>
+            <th data-k="bpDisplay" class="text-end">Blueprint chance</th>
+            <th data-k="val" class="text-end">Rate</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty" hidden>No items match.</div>
+  </div>
+
+  <details id="caveat" class="mt-4">
+    <summary class="text-body-secondary">What this calculator does and doesn't tell you</summary>
+    <div class="mt-2 small">
+      <p><strong>Tells you:</strong> probability and expected count of each item in dragon hoard crates, using every weight and blueprint chance from the actual server-side loot definition.</p>
+      <p><strong>Doesn't tell you:</strong> what <em>quality</em> (Primitive to Ascendant) the rolled item will be. Quality is controlled at spawn by the Drakeling's XP, level, and biome buff. That mapping lives in blueprint code, not data.</p>
+      <p><strong>Composition:</strong> <span id="composition"></span></p>
+      <p><strong>Stack sizes:</strong> <span id="stacksizes"></span></p>
+    </div>
+  </details>
+
+</main>
+
+<!-- Shared footer. -->
+<footer class="container text-center text-body-secondary small py-4">
+  <a href="https://github.com/HowDoIPlayGameDev/asa-tools" class="link-secondary">Source on GitHub</a>
+  · ARK assets © Studio Wildcard
+</footer>
+
+
+<script type="application/json" id="loot-data">{
+  "class": "/Game/ASA/Dinos/ShoulderDragon/Chest/SupplyCrate_BuriedTreasure_ShoulderDragon.SupplyCrate_BuriedTreasure_ShoulderDragon_C",
+  "minItemSets": 3,
+  "maxItemSets": 3,
+  "numItemSetsPower": 1,
+  "minQualityMultiplier": 1,
+  "maxQualityMultiplier": 1,
+  "aboveOneExtraQualityMultiplier": 1.2,
+  "requiredLevelToAccess": 0,
+  "maxLevelToAccess": 0,
+  "sets": [
+    {
+      "name": "Items With Quality",
+      "weight": 1,
+      "minNumItems": 1,
+      "maxNumItems": 1,
+      "numItemsPower": 1,
+      "withoutReplacement": false,
+      "qualityMultiplier": 1,
+      "entries": [
+        {
+          "name": "Weapons",
+          "weight": 1,
+          "minQuantity": 1,
+          "maxQuantity": 1,
+          "quantityPower": 1,
+          "minQuality": 1,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0.15,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": true,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMetalHatchet.PrimalItem_WeaponMetalHatchet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMetalPick.PrimalItem_WeaponMetalPick_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponSickle.PrimalItem_WeaponSickle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponSword.PrimalItem_WeaponSword_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponPike.PrimalItem_WeaponPike_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponCrossbow.PrimalItem_WeaponCrossbow_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponOneShotRifle.PrimalItem_WeaponOneShotRifle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMachinedPistol.PrimalItem_WeaponMachinedPistol_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponHarpoon.PrimalItem_WeaponHarpoon_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMachinedShotgun.PrimalItem_WeaponMachinedShotgun_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponRifle.PrimalItem_WeaponRifle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponCompoundBow.PrimalItem_WeaponCompoundBow_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMachinedSniper.PrimalItem_WeaponMachinedSniper_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/WeaponWhip/PrimalItem_WeaponWhip.PrimalItem_WeaponWhip_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/WeaponChainsaw/PrimalItem_ChainSaw.PrimalItem_ChainSaw_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/WeaponFlamethrower/PrimalItem_WeapFlamethrower.PrimalItem_WeapFlamethrower_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/CoreBlueprints/Weapons/PrimalItem_WeaponClimbPick.PrimalItem_WeaponClimbPick_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Packs/Steampunk/Weapons/GooGun/PrimalItem_WeaponGooGun.PrimalItem_WeaponGooGun_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponTekSword.PrimalItem_WeaponTekSword_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_TekRifle.PrimalItem_TekRifle_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/Aberration/WeaponTekSniper/PrimalItem_TekSniper.PrimalItem_TekSniper_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/LostColony/Weapons/FabricatedCrossbow/PrimalItem_WeaponCrossbow_Fab.PrimalItem_WeaponCrossbow_Fab_C",
+              "weight": 1
+            }
+          ]
+        },
+        {
+          "name": "Armor",
+          "weight": 1,
+          "minQuantity": 1,
+          "maxQuantity": 1,
+          "quantityPower": 1,
+          "minQuality": 1,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0.15,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": true,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinBoots.PrimalItemArmor_ChitinBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinGloves.PrimalItemArmor_ChitinGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinHelmet.PrimalItemArmor_ChitinHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinPants.PrimalItemArmor_ChitinPants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinShirt.PrimalItemArmor_ChitinShirt_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieBoots.PrimalItemArmor_GhillieBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieGloves.PrimalItemArmor_GhillieGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieHelmet.PrimalItemArmor_GhillieHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhilliePants.PrimalItemArmor_GhilliePants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieShirt.PrimalItemArmor_GhillieShirt_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurBoots.PrimalItemArmor_FurBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurGloves.PrimalItemArmor_FurGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurHelmet.PrimalItemArmor_FurHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurPants.PrimalItemArmor_FurPants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurShirt.PrimalItemArmor_FurShirt_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalBoots.PrimalItemArmor_MetalBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalGloves.PrimalItemArmor_MetalGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalHelmet.PrimalItemArmor_MetalHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalPants.PrimalItemArmor_MetalPants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalShirt.PrimalItemArmor_MetalShirt_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Shields/PrimalItemArmor_MetalShield.PrimalItemArmor_MetalShield_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotBoots.PrimalItemArmor_RiotBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotGloves.PrimalItemArmor_RiotGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotHelmet.PrimalItemArmor_RiotHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotPants.PrimalItemArmor_RiotPants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotShirt.PrimalItemArmor_RiotShirt_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Shields/PrimalItemArmor_TransparentRiotShield.PrimalItemArmor_TransparentRiotShield_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothBoots.PrimalItemArmor_DesertClothBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothGloves.PrimalItemArmor_DesertClothGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothGogglesHelmet.PrimalItemArmor_DesertClothGogglesHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothPants.PrimalItemArmor_DesertClothPants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothShirt.PrimalItemArmor_DesertClothShirt_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitBoots.PrimalItemArmor_HazardSuitBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitGloves.PrimalItemArmor_HazardSuitGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitHelmet.PrimalItemArmor_HazardSuitHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitPants.PrimalItemArmor_HazardSuitPants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitShirt.PrimalItemArmor_HazardSuitShirt_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekBoots.PrimalItemArmor_TekBoots_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekGloves.PrimalItemArmor_TekGloves_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekHelmet.PrimalItemArmor_TekHelmet_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekPants.PrimalItemArmor_TekPants_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekShirt.PrimalItemArmor_TekShirt_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticBoots.PrimalItemArmor_ArcticBoots_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticGloves.PrimalItemArmor_ArcticGloves_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticHelmet.PrimalItemArmor_ArcticHelmet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticPants.PrimalItemArmor_ArcticPants_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticShirt.PrimalItemArmor_ArcticShirt_C",
+              "weight": 1
+            }
+          ]
+        },
+        {
+          "name": "Saddles",
+          "weight": 1,
+          "minQuantity": 1,
+          "maxQuantity": 1,
+          "quantityPower": 1,
+          "minQuality": 1,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0.15,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": true,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SarcoSaddle.PrimalItemArmor_SarcoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_EquusSaddle.PrimalItemArmor_EquusSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ScorpionSaddle.PrimalItemArmor_ScorpionSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_StegoSaddle.PrimalItemArmor_StegoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TurtleSaddle.PrimalItemArmor_TurtleSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DunkleosteusSaddle.PrimalItemArmor_DunkleosteusSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DireBearSaddle.PrimalItemArmor_DireBearSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegatheriumSaddle.PrimalItemArmor_MegatheriumSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ArthroSaddle.PrimalItemArmor_ArthroSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_AnkyloSaddle.PrimalItemArmor_AnkyloSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SaberSaddle.PrimalItemArmor_SaberSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SpiderSaddle.PrimalItemArmor_SpiderSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_StagSaddle.PrimalItemArmor_StagSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MammothSaddle.PrimalItemArmor_MammothSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DiplodocusSaddle.PrimalItemArmor_DiplodocusSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DoedSaddle.PrimalItemArmor_DoedSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_AlloSaddle.PrimalItemArmor_AlloSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PlesiaSaddle.PrimalItemArmor_PlesiaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalaniaSaddle.PrimalItemArmor_MegalaniaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SauroSaddle.PrimalItemArmor_SauroSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PteroSaddle.PrimalItemArmor_PteroSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_KaprosuchusSaddle.PrimalItemArmor_KaprosuchusSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_BaryonyxSaddle.PrimalItemArmor_BaryonyxSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ToadSaddle.PrimalItemArmor_ToadSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_Paracer_Saddle.PrimalItemArmor_Paracer_Saddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ChalicoSaddle.PrimalItemArmor_ChalicoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PelaSaddle.PrimalItemArmor_PelaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Gigantoraptor/PrimalItemArmor_GigantoraptorSaddle.PrimalItemArmor_GigantoraptorSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Ceratosaurus/Dinos/Saddle/PrimalItemArmor_CeratosaurusSaddle_ASA.PrimalItemArmor_CeratosaurusSaddle_ASA_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Archelon/Dinos/Saddle/PrimalItem_Armor_Archelon_Saddle_ASA.PrimalItem_Armor_Archelon_Saddle_ASA_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Xiphactinus/Dinos/Saddle/PrimalItemArmor_XiphSaddle_ASA.PrimalItemArmor_XiphSaddle_ASA_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalodonSaddle.PrimalItemArmor_MegalodonSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ThylacoSaddle.PrimalItemArmor_ThylacoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RhinoSaddle.PrimalItemArmor_RhinoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TapejaraSaddle.PrimalItemArmor_TapejaraSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalosaurusSaddle.PrimalItemArmor_MegalosaurusSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DaeodonSaddle.PrimalItemArmor_DaeodonSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_BasiloSaddle.PrimalItemArmor_BasiloSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_BeaverSaddle.PrimalItemArmor_BeaverSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ArgentavisSaddle.PrimalItemArmor_ArgentavisSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_GigantSaddle.PrimalItemArmor_GigantSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MosaSaddle.PrimalItemArmor_MosaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PlesiaSaddle.PrimalItemArmor_PlesiaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_QuetzSaddle.PrimalItemArmor_QuetzSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RexSaddle.PrimalItemArmor_RexSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RhynioSaddle.PrimalItemArmor_RhynioSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SauroSaddle.PrimalItemArmor_SauroSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SpinoSaddle.PrimalItemArmor_SpinoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_YutySaddle.PrimalItemArmor_YutySaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TusoSaddle.PrimalItemArmor_TusoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Deinosuchus/Saddle/PrimalItemArmor_Deinosuchus_Saddle_ASA.PrimalItemArmor_Deinosuchus_Saddle_ASA_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ParacerSaddle_Platform.PrimalItemArmor_ParacerSaddle_Platform_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SauroSaddle_Platform.PrimalItemArmor_SauroSaddle_Platform_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_QuetzSaddle_Platform.PrimalItemArmor_QuetzSaddle_Platform_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PlesiSaddle_Platform.PrimalItemArmor_PlesiSaddle_Platform_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MosaSaddle_Platform.PrimalItemArmor_MosaSaddle_Platform_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Shastasaurus/PrimalItemArmor_ShastaSaddle_Submarine.PrimalItemArmor_ShastaSaddle_Submarine_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RaptorSaddle.PrimalItemArmor_RaptorSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_HyaenodonSaddle.PrimalItemArmor_HyaenodonSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_Gallimimus.PrimalItemArmor_Gallimimus_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ParaSaddle.PrimalItemArmor_ParaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Dinos/Camelsaurus/PrimalItemArmor_CamelsaurusSaddle.PrimalItemArmor_CamelsaurusSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_CarnoSaddle.PrimalItemArmor_CarnoSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_IguanodonSaddle.PrimalItemArmor_IguanodonSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TerrorBirdSaddle.PrimalItemArmor_TerrorBirdSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Dinos/Moth/PrimalItemArmor_MothSaddle.PrimalItemArmor_MothSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Dinos/SpineyLizard/PrimalItemArmor_SpineyLizardSaddle.PrimalItemArmor_SpineyLizardSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Dinos/Mantis/PrimalItemArmor_MantisSaddle.PrimalItemArmor_MantisSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ScorchedEarth/Dinos/RockGolem/PrimalItemArmor_RockGolemSaddle.PrimalItemArmor_RockGolemSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Fasolasuchus/PrimalItemArmor_FasolaSaddle.PrimalItemArmor_FasolaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TrikeSaddle.PrimalItemArmor_TrikeSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/Dinos/CaveWolf/PrimalItemArmor_CavewolfSaddle.PrimalItemArmor_CavewolfSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/Dinos/MoleRat/PrimalItemArmor_MoleRatSaddle.PrimalItemArmor_MoleRatSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/YiLing/PrimalItemArmor_YiLingSaddle.PrimalItemArmor_YiLingSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/Dinos/Basilisk/PrimalItemArmor_BasiliskSaddle.PrimalItemArmor_BasiliskSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/Dinos/Crab/PrimalItemArmor_CrabSaddle.PrimalItemArmor_CrabSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/Dinos/RockDrake/PrimalItemArmor_RockDrakeSaddle.PrimalItemArmor_RockDrakeSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Packs/Wasteland/Dinos/Doggo/PrimalItemArmor_DinoCompanionSaddle_Doggo.PrimalItemArmor_DinoCompanionSaddle_Doggo_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_OwlSaddle.PrimalItemArmor_OwlSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_SpindlesSaddle.PrimalItemArmor_SpindlesSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_GachaSaddle.PrimalItemArmor_GachaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_GasBagsSaddle.PrimalItemArmor_GasBagsSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_IceJumperSaddle.PrimalItemArmor_IceJumperSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Dreadnoughtus/PrimalItemArmor_DreadSaddle_Platform.PrimalItemArmor_DreadSaddle_Platform_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Deinotherium/Dinos/Saddle/PrimalItemArmor_DeinotheriumSaddle_ASA.PrimalItemArmor_DeinotheriumSaddle_ASA_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_CarchaSaddle.PrimalItemArmor_CarchaSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Bison/PrimalItemArmor_BisonSaddle.PrimalItemArmor_BisonSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Maelizard/PrimalItemArmor_MaelizardSaddle.PrimalItemArmor_MaelizardSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalodonSaddle_Tek.PrimalItemArmor_MegalodonSaddle_Tek_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MosaSaddle_Tek.PrimalItemArmor_MosaSaddle_Tek_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RexSaddle_Tek.PrimalItemArmor_RexSaddle_Tek_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/Aberration/Dinos/RockDrake/PrimalItemArmor_RockDrakeSaddle_Tek.PrimalItemArmor_RockDrakeSaddle_Tek_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_Tapejara_Tek.PrimalItemArmor_Tapejara_Tek_C",
+              "weight": 0.5
+            },
+            {
+              "path": "/Game/ASA/Dinos/Helicoprion/Saddle/PrimalItemArmor_Helicoprion.PrimalItemArmor_Helicoprion_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Megaraptor/PrimalItemArmor_ValMegaraptorSaddle.PrimalItemArmor_ValMegaraptorSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/Dinos/AngelFox/PrimalItemArmor_AngelFoxSaddle.PrimalItemArmor_AngelFoxSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/Dinos/DevilFox/PrimalItemArmor_DevilFoxSaddle.PrimalItemArmor_DevilFoxSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/Dinos/SnowDragon/PrimalItemArmor_SnowDragonSaddle.PrimalItemArmor_SnowDragonSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/LostColony/Dinos/SnowMonster/PrimalItemArmor_SnowMonsterSaddle.PrimalItemArmor_SnowMonsterSaddle_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/ASA/Dinos/Acrocanthosaurus/Saddle/PrimalItemArmor_AcroSaddle.PrimalItemArmor_AcroSaddle_C",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Consumables",
+      "weight": 1,
+      "minNumItems": 2,
+      "maxNumItems": 2,
+      "numItemsPower": 1,
+      "withoutReplacement": true,
+      "qualityMultiplier": 1,
+      "entries": [
+        {
+          "name": "Kibbles",
+          "weight": 1,
+          "minQuantity": 1,
+          "maxQuantity": 2,
+          "quantityPower": 1,
+          "minQuality": 0,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": false,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_XSmall.PrimalItemConsumable_Kibble_Base_XSmall_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Small.PrimalItemConsumable_Kibble_Base_Small_C",
+              "weight": 0.95
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Medium.PrimalItemConsumable_Kibble_Base_Medium_C",
+              "weight": 0.9
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Large.PrimalItemConsumable_Kibble_Base_Large_C",
+              "weight": 0.85
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_XLarge.PrimalItemConsumable_Kibble_Base_XLarge_C",
+              "weight": 0.8
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Special.PrimalItemConsumable_Kibble_Base_Special_C",
+              "weight": 0.75
+            }
+          ]
+        },
+        {
+          "name": "Soups / Heals",
+          "weight": 1,
+          "minQuantity": 1,
+          "maxQuantity": 2,
+          "quantityPower": 1,
+          "minQuality": 0,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": false,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_CactusBuffSoup.PrimalItemConsumable_CactusBuffSoup_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_HealSoup.PrimalItemConsumable_HealSoup_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_BattleTartare.PrimalItemConsumable_Soup_BattleTartare_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_CalienSoup.PrimalItemConsumable_Soup_CalienSoup_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_EnduroStew.PrimalItemConsumable_Soup_EnduroStew_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_FocalChili.PrimalItemConsumable_Soup_FocalChili_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_FriaCurry.PrimalItemConsumable_Soup_FriaCurry_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_LazarusChowder.PrimalItemConsumable_Soup_LazarusChowder_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/Aberration/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_MushroomSoup.PrimalItemConsumable_Soup_MushroomSoup_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_ShadowSteak.PrimalItemConsumable_Soup_ShadowSteak_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_StaminaSoup.PrimalItemConsumable_StaminaSoup_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/BaseBPs/PrimalItemConsumableRespecSoup.PrimalItemConsumableRespecSoup_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_TheHorn.PrimalItemConsumable_TheHorn_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_SweetVeggieCake.PrimalItemConsumable_SweetVeggieCake_C",
+              "weight": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ammo",
+      "weight": 1,
+      "minNumItems": 2,
+      "maxNumItems": 2,
+      "numItemsPower": 1,
+      "withoutReplacement": true,
+      "qualityMultiplier": 1,
+      "entries": [
+        {
+          "name": "Arrows",
+          "weight": 1,
+          "minQuantity": 8,
+          "maxQuantity": 12,
+          "quantityPower": 1,
+          "minQuality": 0,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": false,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_ArrowStone.PrimalItemAmmo_ArrowStone_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_ArrowTranq.PrimalItemAmmo_ArrowTranq_C",
+              "weight": 0.95
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_ArrowFlame.PrimalItemAmmo_ArrowFlame_C",
+              "weight": 0.9
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_CompoundBowArrow.PrimalItemAmmo_CompoundBowArrow_C",
+              "weight": 0.85
+            }
+          ]
+        },
+        {
+          "name": "Bullets",
+          "weight": 1,
+          "minQuantity": 8,
+          "maxQuantity": 12,
+          "quantityPower": 1,
+          "minQuality": 0,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": false,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_SimpleBullet.PrimalItemAmmo_SimpleBullet_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_SimpleShotgunBullet.PrimalItemAmmo_SimpleShotgunBullet_C",
+              "weight": 0.95
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_SimpleRifleBullet.PrimalItemAmmo_SimpleRifleBullet_C",
+              "weight": 0.9
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_AdvancedBullet.PrimalItemAmmo_AdvancedBullet_C",
+              "weight": 0.85
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_AdvancedRifleBullet.PrimalItemAmmo_AdvancedRifleBullet_C",
+              "weight": 0.8
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_AdvancedSniperBullet.PrimalItemAmmo_AdvancedSniperBullet_C",
+              "weight": 0.75
+            }
+          ]
+        },
+        {
+          "name": "Special",
+          "weight": 1,
+          "minQuantity": 2,
+          "maxQuantity": 3,
+          "quantityPower": 1,
+          "minQuality": 0,
+          "maxQuality": 0,
+          "qualityPower": 1,
+          "blueprintChance": 0,
+          "forceBlueprint": false,
+          "ignoreQuantityMultipliers": false,
+          "items": [
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_TranqDart.PrimalItemAmmo_TranqDart_C",
+              "weight": 1
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_RefinedTranqDart.PrimalItemAmmo_RefinedTranqDart_C",
+              "weight": 0.95
+            },
+            {
+              "path": "/Game/ScorchedEarth/WeaponFlamethrower/PrimalItemAmmo_Flamethrower.PrimalItemAmmo_Flamethrower_C",
+              "weight": 0.9
+            },
+            {
+              "path": "/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_Rocket.PrimalItemAmmo_Rocket_C",
+              "weight": 0.85
+            },
+            {
+              "path": "/Game/ScorchedEarth/WeaponHomingMissile/PrimalItemAmmo_RocketHomingMissile.PrimalItemAmmo_RocketHomingMissile_C",
+              "weight": 0.8
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}</script>
+<script src="src/dragonhoard.js"></script>
+</body>
+</html>
