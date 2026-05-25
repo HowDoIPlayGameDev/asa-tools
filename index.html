@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASA Tools</title>
+<style>
+  :root {
+    color-scheme: dark light;
+    --bg: #0e0e10; --card: #16161a; --border: #26262c; --text: #eaeaf0;
+    --muted: #8a8a95; --accent: #8b5cf6;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #fafafa; --card: #fff; --border: #e5e5ea; --text: #18181b; --muted: #71717a; }
+  }
+  * { box-sizing: border-box; }
+  body { font: 16px/1.55 system-ui, -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+  header { margin-bottom: 2rem; }
+  h1 { margin: 0 0 .35rem; font-size: 2rem; letter-spacing: -.02em; }
+  .sub { color: var(--muted); }
+  a.tool {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.1rem 1.25rem; margin-bottom: .85rem;
+    transition: border-color .15s, transform .15s;
+  }
+  a.tool:hover { border-color: var(--accent); transform: translateY(-1px); }
+  a.tool h2 { margin: 0 0 .25rem; font-size: 1.1rem; }
+  a.tool p { margin: 0; color: var(--muted); font-size: 14px; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ASA Tools</h1>
+    <div class="sub">Calculators &amp; reference for ARK: Survival Ascended. Data datamined live from a running server.</div>
+  </header>
+
+  <a class="tool" href="./dragonhoard/">
+    <h2>Dragon Hoard Loot Calculator</h2>
+    <p>Drop rates for every item in Drakeling hoard crates. Filter by category, search by name, see chance per crate or grind estimates.</p>
+  </a>
+
+  <footer>
+    More tools coming. <a href="https://github.com/HowDoIPlayGameDev/asa-tools">Source on GitHub</a>.
+    ARK and related assets are property of Studio Wildcard.
+  </footer>
+</div>
+</body>
+</html>

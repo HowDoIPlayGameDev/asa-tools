@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dragon Hoard Loot Calculator</title>
+<style>
+  :root {
+    color-scheme: dark light;
+    --bg: #0e0e10; --card: #16161a; --border: #26262c; --text: #eaeaf0;
+    --muted: #8a8a95; --accent: #8b5cf6; --good: #22c55e; --warn: #f59e0b;
+    --weapon: #ef4444; --armor: #3b82f6; --saddle: #a855f7;
+    --kibble: #84cc16; --soup: #f97316; --ammo: #06b6d4;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #fafafa; --card: #fff; --border: #e5e5ea; --text: #18181b; --muted: #71717a; }
+  }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.5 system-ui, -apple-system, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+  header { margin-bottom: 1.5rem; }
+  h1 { margin: 0 0 .25rem; font-size: 1.75rem; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .sub a { color: var(--accent); }
+
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+
+  .controls { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  @media (min-width: 720px) { .controls { grid-template-columns: 2fr 1fr 1fr; } }
+  .field label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: .35rem; font-weight: 600; }
+  .field input, .field select { width: 100%; padding: .65rem .75rem; font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; }
+  .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .help { font-size: 12px; color: var(--muted); margin-top: .35rem; }
+
+  .pills { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
+  .pill-btn { padding: .25rem .65rem; font-size: 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; }
+  .pill-btn:hover { color: var(--text); }
+  .pill-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .85rem 1rem; }
+  .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .stat .v { font-size: 1.4rem; font-weight: 600; margin-top: .15rem; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: .65rem .75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); cursor: pointer; user-select: none; font-weight: 600; position: sticky; top: 0; background: var(--card); }
+  th:hover { color: var(--text); }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  th.sort-asc::after { content: " ↑"; color: var(--accent); }
+  th.sort-desc::after { content: " ↓"; color: var(--accent); }
+  tbody tr:hover { background: rgba(139, 92, 246, .06); }
+  td.cat { white-space: nowrap; }
+  .cat-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .cat-Weapons { background: rgba(239, 68, 68, .15); color: var(--weapon); }
+  .cat-Armor { background: rgba(59, 130, 246, .15); color: var(--armor); }
+  .cat-Saddles { background: rgba(168, 85, 247, .15); color: var(--saddle); }
+  .cat-Kibbles { background: rgba(132, 204, 22, .15); color: var(--kibble); }
+  .cat-Soups-Heals, .cat-Soups { background: rgba(249, 115, 22, .15); color: var(--soup); }
+  .cat-Arrows, .cat-Bullets, .cat-Special { background: rgba(6, 182, 212, .15); color: var(--ammo); }
+
+  .meter { display: inline-block; width: 60px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+  .meter > div { height: 100%; background: var(--accent); }
+  td.item { font-weight: 500; }
+  td.muted { color: var(--muted); font-size: 13px; }
+  .empty { padding: 2rem; text-align: center; color: var(--muted); }
+  details { margin-top: 1rem; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details[open] summary { color: var(--text); }
+  .legend { font-size: 13px; color: var(--muted); margin-top: .5rem; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Dragon Hoard Loot Calculator</h1>
+  <div class="sub">Probabilities datamined from the live server. Quality scaling (XP → tier) <a href="#caveat">isn't modeled yet</a> — these are "what items appear" rates, not "at which quality."</div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="k">Item Pool Size</div><div class="v" id="poolSize">…</div></div>
+  <div class="stat"><div class="k">Stacks per Crate</div><div class="v" id="totalSlots">…</div></div>
+  <div class="stat"><div class="k">Visible Items</div><div class="v" id="visibleCount">…</div></div>
+</div>
+
+<div class="panel">
+  <div class="controls">
+    <div class="field">
+      <label for="q">Search item name</label>
+      <input type="search" id="q" placeholder="e.g. tek sword, rex saddle, advanced bullet" autocomplete="off">
+      <div class="pills">
+        <button class="pill-btn active" data-cat="">All</button>
+        <button class="pill-btn" data-cat="Weapons">Weapons</button>
+        <button class="pill-btn" data-cat="Armor">Armor</button>
+        <button class="pill-btn" data-cat="Saddles">Saddles</button>
+        <button class="pill-btn" data-cat="Kibbles">Kibbles</button>
+        <button class="pill-btn" data-cat="Soups / Heals">Soups</button>
+        <button class="pill-btn" data-cat="Arrows">Arrows</button>
+        <button class="pill-btn" data-cat="Bullets">Bullets</button>
+        <button class="pill-btn" data-cat="Special">Special</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="view">Show me</label>
+      <select id="view">
+        <option value="perCrate">Chance per crate</option>
+        <option value="perItemSlot">Share of its category</option>
+        <option value="ePer100">Expected count per 100 crates</option>
+        <option value="cratesNeeded">Crates needed for ≥1 (90% confidence)</option>
+      </select>
+      <div class="help" id="viewHelp"></div>
+    </div>
+    <div class="field">
+      <label for="form">Item form</label>
+      <select id="form">
+        <option value="any">Item or blueprint</option>
+        <option value="item">Item only</option>
+        <option value="bp">Blueprint only</option>
+      </select>
+      <div class="help">Quality items roll as blueprints 15% of the time.</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="padding: 0;">
+  <table id="t">
+    <thead>
+      <tr>
+        <th data-k="item">Item</th>
+        <th data-k="entry">Category</th>
+        <th class="num" data-k="val">Rate</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <div class="empty" id="empty" hidden>No items match.</div>
+</div>
+
+<details id="caveat">
+  <summary>What this calculator does and doesn't tell you</summary>
+  <p><strong>It tells you:</strong> the probability and expected count of each item appearing in dragon hoard crates. These come from the server's actual loot definition — every weight, every blueprint chance.</p>
+  <p><strong>It doesn't tell you:</strong> what <em>quality</em> (Primitive / Ramshackle / Apprentice / Journeyman / Mastercraft / Ascendant) the rolled item will be. Quality is controlled at spawn time by the Drakeling's stored XP, level, and biome buff — that mapping lives in blueprint code, not data, so it would need empirical testing to derive.</p>
+  <p><strong>How a crate is composed:</strong> every hoard always rolls 5 stacks:</p>
+  <ul>
+    <li><strong>1× quality item</strong>: weapon, armor, or saddle (one is chosen)</li>
+    <li><strong>1× kibble + 1× soup/heal</strong>: both always</li>
+    <li><strong>2× ammo</strong>: any 2 of {arrows, bullets, special}</li>
+  </ul>
+  <p><strong>Stack sizes:</strong> quality items = 1; kibbles/soups = 1–2; arrows/bullets = 8–12; special ammo = 2–3.</p>
+</details>
+
+</div>
+
+<script type="text/plain" id="loot-data">## /Game/ASA/Dinos/ShoulderDragon/Chest/SupplyCrate_BuriedTreasure_ShoulderDragon.SupplyCrate_BuriedTreasure_ShoulderDragon_C
+  MinItemSets: 3
+  MaxItemSets: 3
+  NumItemSetsPower: 1
+  MinQualityMultiplier: 1
+  MaxQualityMultiplier: 1
+  AboveOneExtraQualityMultiplier: 1.2
+  RequiredLevelToAccess: 0
+  MaxLevelToAccess: 0
+  ItemSets: ((SetName="Items With Quality",ItemEntries=((ItemEntryName="Weapons",Items=("/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMetalHatchet.PrimalItem_WeaponMetalHatchet_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMetalPick.PrimalItem_WeaponMetalPick_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponSickle.PrimalItem_WeaponSickle_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponSword.PrimalItem_WeaponSword_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponPike.PrimalItem_WeaponPike_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponCrossbow.PrimalItem_WeaponCrossbow_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponOneShotRifle.PrimalItem_WeaponOneShotRifle_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMachinedPistol.PrimalItem_WeaponMachinedPistol_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponHarpoon.PrimalItem_WeaponHarpoon_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMachinedShotgun.PrimalItem_WeaponMachinedShotgun_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponRifle.PrimalItem_WeaponRifle_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponCompoundBow.PrimalItem_WeaponCompoundBow_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponMachinedSniper.PrimalItem_WeaponMachinedSniper_C","/Game/ScorchedEarth/WeaponWhip/PrimalItem_WeaponWhip.PrimalItem_WeaponWhip_C","/Game/ScorchedEarth/WeaponChainsaw/PrimalItem_ChainSaw.PrimalItem_ChainSaw_C","/Game/ScorchedEarth/WeaponFlamethrower/PrimalItem_WeapFlamethrower.PrimalItem_WeapFlamethrower_C","/Game/Aberration/CoreBlueprints/Weapons/PrimalItem_WeaponClimbPick.PrimalItem_WeaponClimbPick_C","/Game/Packs/Steampunk/Weapons/GooGun/PrimalItem_WeaponGooGun.PrimalItem_WeaponGooGun_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_WeaponTekSword.PrimalItem_WeaponTekSword_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItem_TekRifle.PrimalItem_TekRifle_C","/Game/Aberration/WeaponTekSniper/PrimalItem_TekSniper.PrimalItem_TekSniper_C","/Game/LostColony/Weapons/FabricatedCrossbow/PrimalItem_WeaponCrossbow_Fab.PrimalItem_WeaponCrossbow_Fab_C"),ItemsWeights=(1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,0.500000,0.500000,1.000000),MinQuantity=1.000000,MinRandomQuality=1.000000,MinQuality=1.000000,bForceBlueprint=False,ChanceToBeBlueprintOverride=0.150000,bIgnoreQuantityMultipliers=True),(ItemEntryName="Armor",Items=("/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinBoots.PrimalItemArmor_ChitinBoots_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinGloves.PrimalItemArmor_ChitinGloves_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinHelmet.PrimalItemArmor_ChitinHelmet_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinPants.PrimalItemArmor_ChitinPants_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Chitin/PrimalItemArmor_ChitinShirt.PrimalItemArmor_ChitinShirt_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieBoots.PrimalItemArmor_GhillieBoots_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieGloves.PrimalItemArmor_GhillieGloves_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieHelmet.PrimalItemArmor_GhillieHelmet_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhilliePants.PrimalItemArmor_GhilliePants_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Ghillie/PrimalItemArmor_GhillieShirt.PrimalItemArmor_GhillieShirt_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurBoots.PrimalItemArmor_FurBoots_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurGloves.PrimalItemArmor_FurGloves_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurHelmet.PrimalItemArmor_FurHelmet_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurPants.PrimalItemArmor_FurPants_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Fur/PrimalItemArmor_FurShirt.PrimalItemArmor_FurShirt_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalBoots.PrimalItemArmor_MetalBoots_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalGloves.PrimalItemArmor_MetalGloves_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalHelmet.PrimalItemArmor_MetalHelmet_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalPants.PrimalItemArmor_MetalPants_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Metal/PrimalItemArmor_MetalShirt.PrimalItemArmor_MetalShirt_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Shields/PrimalItemArmor_MetalShield.PrimalItemArmor_MetalShield_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotBoots.PrimalItemArmor_RiotBoots_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotGloves.PrimalItemArmor_RiotGloves_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotHelmet.PrimalItemArmor_RiotHelmet_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotPants.PrimalItemArmor_RiotPants_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Riot/PrimalItemArmor_RiotShirt.PrimalItemArmor_RiotShirt_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Shields/PrimalItemArmor_TransparentRiotShield.PrimalItemArmor_TransparentRiotShield_C","/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothBoots.PrimalItemArmor_DesertClothBoots_C","/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothGloves.PrimalItemArmor_DesertClothGloves_C","/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothGogglesHelmet.PrimalItemArmor_DesertClothGogglesHelmet_C","/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothPants.PrimalItemArmor_DesertClothPants_C","/Game/ScorchedEarth/Outfits/PrimalItemArmor_DesertClothShirt.PrimalItemArmor_DesertClothShirt_C","/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitBoots.PrimalItemArmor_HazardSuitBoots_C","/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitGloves.PrimalItemArmor_HazardSuitGloves_C","/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitHelmet.PrimalItemArmor_HazardSuitHelmet_C","/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitPants.PrimalItemArmor_HazardSuitPants_C","/Game/Aberration/CoreBlueprints/Items/Armor/HazardSuit/PrimalItemArmor_HazardSuitShirt.PrimalItemArmor_HazardSuitShirt_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekBoots.PrimalItemArmor_TekBoots_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekGloves.PrimalItemArmor_TekGloves_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekHelmet.PrimalItemArmor_TekHelmet_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekPants.PrimalItemArmor_TekPants_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/TEK/PrimalItemArmor_TekShirt.PrimalItemArmor_TekShirt_C","/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticBoots.PrimalItemArmor_ArcticBoots_C","/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticGloves.PrimalItemArmor_ArcticGloves_C","/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticHelmet.PrimalItemArmor_ArcticHelmet_C","/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticPants.PrimalItemArmor_ArcticPants_C","/Game/LostColony/CoreBlueprints/Items/Armor/PrimalItemArmor_ArcticShirt.PrimalItemArmor_ArcticShirt_C"),ItemsWeights=(1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,0.500000,0.500000,0.500000,0.500000,0.500000,1.000000,1.000000,1.000000,1.000000,1.000000),MinQuantity=1.000000,MinRandomQuality=1.000000,MinQuality=1.000000,bForceBlueprint=False,ChanceToBeBlueprintOverride=0.150000,bIgnoreQuantityMultipliers=True),(ItemEntryName="Saddles",Items=("/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SarcoSaddle.PrimalItemArmor_SarcoSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_EquusSaddle.PrimalItemArmor_EquusSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ScorpionSaddle.PrimalItemArmor_ScorpionSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_StegoSaddle.PrimalItemArmor_StegoSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TurtleSaddle.PrimalItemArmor_TurtleSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DunkleosteusSaddle.PrimalItemArmor_DunkleosteusSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DireBearSaddle.PrimalItemArmor_DireBearSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegatheriumSaddle.PrimalItemArmor_MegatheriumSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ArthroSaddle.PrimalItemArmor_ArthroSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_AnkyloSaddle.PrimalItemArmor_AnkyloSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SaberSaddle.PrimalItemArmor_SaberSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SpiderSaddle.PrimalItemArmor_SpiderSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_StagSaddle.PrimalItemArmor_StagSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MammothSaddle.PrimalItemArmor_MammothSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DiplodocusSaddle.PrimalItemArmor_DiplodocusSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DoedSaddle.PrimalItemArmor_DoedSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_AlloSaddle.PrimalItemArmor_AlloSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PlesiaSaddle.PrimalItemArmor_PlesiaSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalaniaSaddle.PrimalItemArmor_MegalaniaSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SauroSaddle.PrimalItemArmor_SauroSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PteroSaddle.PrimalItemArmor_PteroSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_KaprosuchusSaddle.PrimalItemArmor_KaprosuchusSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_BaryonyxSaddle.PrimalItemArmor_BaryonyxSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ToadSaddle.PrimalItemArmor_ToadSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_Paracer_Saddle.PrimalItemArmor_Paracer_Saddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ChalicoSaddle.PrimalItemArmor_ChalicoSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PelaSaddle.PrimalItemArmor_PelaSaddle_C","/Game/ASA/Dinos/Gigantoraptor/PrimalItemArmor_GigantoraptorSaddle.PrimalItemArmor_GigantoraptorSaddle_C","/Game/ASA/Dinos/Ceratosaurus/Dinos/Saddle/PrimalItemArmor_CeratosaurusSaddle_ASA.PrimalItemArmor_CeratosaurusSaddle_ASA_C","/Game/ASA/Dinos/Archelon/Dinos/Saddle/PrimalItem_Armor_Archelon_Saddle_ASA.PrimalItem_Armor_Archelon_Saddle_ASA_C","/Game/ASA/Dinos/Xiphactinus/Dinos/Saddle/PrimalItemArmor_XiphSaddle_ASA.PrimalItemArmor_XiphSaddle_ASA_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalodonSaddle.PrimalItemArmor_MegalodonSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ThylacoSaddle.PrimalItemArmor_ThylacoSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RhinoSaddle.PrimalItemArmor_RhinoSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TapejaraSaddle.PrimalItemArmor_TapejaraSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalosaurusSaddle.PrimalItemArmor_MegalosaurusSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_DaeodonSaddle.PrimalItemArmor_DaeodonSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_BasiloSaddle.PrimalItemArmor_BasiloSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_BeaverSaddle.PrimalItemArmor_BeaverSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ArgentavisSaddle.PrimalItemArmor_ArgentavisSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_GigantSaddle.PrimalItemArmor_GigantSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MosaSaddle.PrimalItemArmor_MosaSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PlesiaSaddle.PrimalItemArmor_PlesiaSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_QuetzSaddle.PrimalItemArmor_QuetzSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RexSaddle.PrimalItemArmor_RexSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RhynioSaddle.PrimalItemArmor_RhynioSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SauroSaddle.PrimalItemArmor_SauroSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SpinoSaddle.PrimalItemArmor_SpinoSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_YutySaddle.PrimalItemArmor_YutySaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TusoSaddle.PrimalItemArmor_TusoSaddle_C","/Game/ASA/Dinos/Deinosuchus/Saddle/PrimalItemArmor_Deinosuchus_Saddle_ASA.PrimalItemArmor_Deinosuchus_Saddle_ASA_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ParacerSaddle_Platform.PrimalItemArmor_ParacerSaddle_Platform_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_SauroSaddle_Platform.PrimalItemArmor_SauroSaddle_Platform_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_QuetzSaddle_Platform.PrimalItemArmor_QuetzSaddle_Platform_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_PlesiSaddle_Platform.PrimalItemArmor_PlesiSaddle_Platform_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MosaSaddle_Platform.PrimalItemArmor_MosaSaddle_Platform_C","/Game/ASA/Dinos/Shastasaurus/PrimalItemArmor_ShastaSaddle_Submarine.PrimalItemArmor_ShastaSaddle_Submarine_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RaptorSaddle.PrimalItemArmor_RaptorSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_HyaenodonSaddle.PrimalItemArmor_HyaenodonSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_Gallimimus.PrimalItemArmor_Gallimimus_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_ParaSaddle.PrimalItemArmor_ParaSaddle_C","/Game/ScorchedEarth/Dinos/Camelsaurus/PrimalItemArmor_CamelsaurusSaddle.PrimalItemArmor_CamelsaurusSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_CarnoSaddle.PrimalItemArmor_CarnoSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_IguanodonSaddle.PrimalItemArmor_IguanodonSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TerrorBirdSaddle.PrimalItemArmor_TerrorBirdSaddle_C","/Game/ScorchedEarth/Dinos/Moth/PrimalItemArmor_MothSaddle.PrimalItemArmor_MothSaddle_C","/Game/ScorchedEarth/Dinos/SpineyLizard/PrimalItemArmor_SpineyLizardSaddle.PrimalItemArmor_SpineyLizardSaddle_C","/Game/ScorchedEarth/Dinos/Mantis/PrimalItemArmor_MantisSaddle.PrimalItemArmor_MantisSaddle_C","/Game/ScorchedEarth/Dinos/RockGolem/PrimalItemArmor_RockGolemSaddle.PrimalItemArmor_RockGolemSaddle_C","/Game/ASA/Dinos/Fasolasuchus/PrimalItemArmor_FasolaSaddle.PrimalItemArmor_FasolaSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_TrikeSaddle.PrimalItemArmor_TrikeSaddle_C","/Game/Aberration/Dinos/CaveWolf/PrimalItemArmor_CavewolfSaddle.PrimalItemArmor_CavewolfSaddle_C","/Game/Aberration/Dinos/MoleRat/PrimalItemArmor_MoleRatSaddle.PrimalItemArmor_MoleRatSaddle_C","/Game/ASA/Dinos/YiLing/PrimalItemArmor_YiLingSaddle.PrimalItemArmor_YiLingSaddle_C","/Game/Aberration/Dinos/Basilisk/PrimalItemArmor_BasiliskSaddle.PrimalItemArmor_BasiliskSaddle_C","/Game/Aberration/Dinos/Crab/PrimalItemArmor_CrabSaddle.PrimalItemArmor_CrabSaddle_C","/Game/Aberration/Dinos/RockDrake/PrimalItemArmor_RockDrakeSaddle.PrimalItemArmor_RockDrakeSaddle_C","/Game/Packs/Wasteland/Dinos/Doggo/PrimalItemArmor_DinoCompanionSaddle_Doggo.PrimalItemArmor_DinoCompanionSaddle_Doggo_C","/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_OwlSaddle.PrimalItemArmor_OwlSaddle_C","/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_SpindlesSaddle.PrimalItemArmor_SpindlesSaddle_C","/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_GachaSaddle.PrimalItemArmor_GachaSaddle_C","/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_GasBagsSaddle.PrimalItemArmor_GasBagsSaddle_C","/Game/Extinction/CoreBlueprints/Items/Saddle/PrimalItemArmor_IceJumperSaddle.PrimalItemArmor_IceJumperSaddle_C","/Game/ASA/Dinos/Dreadnoughtus/PrimalItemArmor_DreadSaddle_Platform.PrimalItemArmor_DreadSaddle_Platform_C","/Game/ASA/Dinos/Deinotherium/Dinos/Saddle/PrimalItemArmor_DeinotheriumSaddle_ASA.PrimalItemArmor_DeinotheriumSaddle_ASA_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_CarchaSaddle.PrimalItemArmor_CarchaSaddle_C","/Game/ASA/Dinos/Bison/PrimalItemArmor_BisonSaddle.PrimalItemArmor_BisonSaddle_C","/Game/ASA/Dinos/Maelizard/PrimalItemArmor_MaelizardSaddle.PrimalItemArmor_MaelizardSaddle_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MegalodonSaddle_Tek.PrimalItemArmor_MegalodonSaddle_Tek_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_MosaSaddle_Tek.PrimalItemArmor_MosaSaddle_Tek_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_RexSaddle_Tek.PrimalItemArmor_RexSaddle_Tek_C","/Game/Aberration/Dinos/RockDrake/PrimalItemArmor_RockDrakeSaddle_Tek.PrimalItemArmor_RockDrakeSaddle_Tek_C","/Game/PrimalEarth/CoreBlueprints/Items/Armor/Saddles/PrimalItemArmor_Tapejara_Tek.PrimalItemArmor_Tapejara_Tek_C","/Game/ASA/Dinos/Helicoprion/Saddle/PrimalItemArmor_Helicoprion.PrimalItemArmor_Helicoprion_C","/Game/ASA/Dinos/Megaraptor/PrimalItemArmor_ValMegaraptorSaddle.PrimalItemArmor_ValMegaraptorSaddle_C","/Game/LostColony/Dinos/AngelFox/PrimalItemArmor_AngelFoxSaddle.PrimalItemArmor_AngelFoxSaddle_C","/Game/LostColony/Dinos/DevilFox/PrimalItemArmor_DevilFoxSaddle.PrimalItemArmor_DevilFoxSaddle_C","/Game/LostColony/Dinos/SnowDragon/PrimalItemArmor_SnowDragonSaddle.PrimalItemArmor_SnowDragonSaddle_C","/Game/LostColony/Dinos/SnowMonster/PrimalItemArmor_SnowMonsterSaddle.PrimalItemArmor_SnowMonsterSaddle_C","/Game/ASA/Dinos/Acrocanthosaurus/Saddle/PrimalItemArmor_AcroSaddle.PrimalItemArmor_AcroSaddle_C"),ItemsWeights=(1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000,0.500000,0.500000,0.500000,0.500000,0.500000,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000),MinQuantity=1.000000,MinRandomQuality=1.000000,MinQuality=1.000000,bForceBlueprint=False,ChanceToBeBlueprintOverride=0.150000,bIgnoreQuantityMultipliers=True))),(SetName="Consumables",ItemEntries=((ItemEntryName="Kibbles",Items=("/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_XSmall.PrimalItemConsumable_Kibble_Base_XSmall_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Small.PrimalItemConsumable_Kibble_Base_Small_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Medium.PrimalItemConsumable_Kibble_Base_Medium_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Large.PrimalItemConsumable_Kibble_Base_Large_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_XLarge.PrimalItemConsumable_Kibble_Base_XLarge_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Kibble_Base_Special.PrimalItemConsumable_Kibble_Base_Special_C"),ItemsWeights=(1.000000,0.950000,0.900000,0.850000,0.800000,0.750000),MinQuantity=1.000000,MaxQuantity=2.000000,bApplyQuantityToSingleItem=True,bForceBlueprint=False),(ItemEntryName="Soups / Heals",Items=("/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_CactusBuffSoup.PrimalItemConsumable_CactusBuffSoup_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_HealSoup.PrimalItemConsumable_HealSoup_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_BattleTartare.PrimalItemConsumable_Soup_BattleTartare_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_CalienSoup.PrimalItemConsumable_Soup_CalienSoup_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_EnduroStew.PrimalItemConsumable_Soup_EnduroStew_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_FocalChili.PrimalItemConsumable_Soup_FocalChili_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_FriaCurry.PrimalItemConsumable_Soup_FriaCurry_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_LazarusChowder.PrimalItemConsumable_Soup_LazarusChowder_C","/Game/Aberration/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_MushroomSoup.PrimalItemConsumable_Soup_MushroomSoup_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_Soup_ShadowSteak.PrimalItemConsumable_Soup_ShadowSteak_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_StaminaSoup.PrimalItemConsumable_StaminaSoup_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/BaseBPs/PrimalItemConsumableRespecSoup.PrimalItemConsumableRespecSoup_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_TheHorn.PrimalItemConsumable_TheHorn_C","/Game/PrimalEarth/CoreBlueprints/Items/Consumables/PrimalItemConsumable_SweetVeggieCake.PrimalItemConsumable_SweetVeggieCake_C"),MinQuantity=1.000000,MaxQuantity=2.000000,bApplyQuantityToSingleItem=True,bForceBlueprint=False)),MinNumItems=2.000000,MaxNumItems=2.000000,bItemsRandomWithoutReplacement=True),(SetName="Ammo",ItemEntries=((ItemEntryName="Arrows",Items=("/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_ArrowStone.PrimalItemAmmo_ArrowStone_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_ArrowTranq.PrimalItemAmmo_ArrowTranq_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_ArrowFlame.PrimalItemAmmo_ArrowFlame_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_CompoundBowArrow.PrimalItemAmmo_CompoundBowArrow_C"),ItemsWeights=(1.000000,0.950000,0.900000,0.850000),MinQuantity=8.000000,MaxQuantity=12.000000,bApplyQuantityToSingleItem=True,bForceBlueprint=False),(ItemEntryName="Bullets",Items=("/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_SimpleBullet.PrimalItemAmmo_SimpleBullet_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_SimpleShotgunBullet.PrimalItemAmmo_SimpleShotgunBullet_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_SimpleRifleBullet.PrimalItemAmmo_SimpleRifleBullet_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_AdvancedBullet.PrimalItemAmmo_AdvancedBullet_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_AdvancedRifleBullet.PrimalItemAmmo_AdvancedRifleBullet_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_AdvancedSniperBullet.PrimalItemAmmo_AdvancedSniperBullet_C"),ItemsWeights=(1.000000,0.950000,0.900000,0.850000,0.800000,0.750000),MinQuantity=8.000000,MaxQuantity=12.000000,bApplyQuantityToSingleItem=True,bForceBlueprint=False),(ItemEntryName="Special",Items=("/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_TranqDart.PrimalItemAmmo_TranqDart_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_RefinedTranqDart.PrimalItemAmmo_RefinedTranqDart_C","/Game/ScorchedEarth/WeaponFlamethrower/PrimalItemAmmo_Flamethrower.PrimalItemAmmo_Flamethrower_C","/Game/PrimalEarth/CoreBlueprints/Weapons/PrimalItemAmmo_Rocket.PrimalItemAmmo_Rocket_C","/Game/ScorchedEarth/WeaponHomingMissile/PrimalItemAmmo_RocketHomingMissile.PrimalItemAmmo_RocketHomingMissile_C"),ItemsWeights=(1.000000,0.950000,0.900000,0.850000,0.800000),MinQuantity=2.000000,MaxQuantity=3.000000,bApplyQuantityToSingleItem=True,bForceBlueprint=False)),MinNumItems=2.000000,MaxNumItems=2.000000,bItemsRandomWithoutReplacement=True))
+  AdditionalItemSets: ()
+</script>
+
+<script>
+// ---------- ExportText parser ----------
+function splitTopLevel(body) {
+  const out = []; let depth = 0, inStr = false, last = 0;
+  for (let i = 0; i < body.length; ++i) {
+    const c = body[i];
+    if (c === '"') inStr = !inStr;
+    else if (!inStr && c === '(') depth++;
+    else if (!inStr && c === ')') depth--;
+    else if (!inStr && c === ',' && depth === 0) { out.push(body.slice(last, i)); last = i + 1; }
+  }
+  if (last < body.length) out.push(body.slice(last));
+  return out;
+}
+function parseValue(v) {
+  v = v.trim();
+  if (v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1);
+  if (v === 'True') return true;
+  if (v === 'False') return false;
+  if (/^-?\d+(\.\d+)?$/.test(v)) return parseFloat(v);
+  if (v.startsWith('(') && v.endsWith(')')) {
+    const items = splitTopLevel(v.slice(1, -1));
+    if (!items.length) return [];
+    let hasEq = false, depth = 0, inStr = false;
+    for (let i = 0; i < items[0].length; ++i) {
+      const c = items[0][i];
+      if (c === '"') inStr = !inStr;
+      else if (!inStr && c === '(') depth++;
+      else if (!inStr && c === ')') depth--;
+      else if (!inStr && c === '=' && depth === 0) { hasEq = true; break; }
+    }
+    if (hasEq) return parseStruct(v);
+    return items.map(parseValue);
+  }
+  return v;
+}
+function parseStruct(block) {
+  if (!block.startsWith('(') || !block.endsWith(')')) return {};
+  const fields = splitTopLevel(block.slice(1, -1));
+  const obj = {};
+  for (const f of fields) {
+    const eq = f.indexOf('=');
+    if (eq < 0) continue;
+    obj[f.slice(0, eq).trim()] = parseValue(f.slice(eq + 1));
+  }
+  return obj;
+}
+function findClose(str, open) {
+  let depth = 0, inStr = false;
+  for (let i = open; i < str.length; ++i) {
+    const c = str[i];
+    if (c === '"') inStr = !inStr;
+    else if (!inStr && c === '(') depth++;
+    else if (!inStr && c === ')') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+// ---------- Friendly name from internal class ----------
+function prettyName(internal) {
+  let n = internal
+    .replace(/^PrimalItemArmor_?/, '')
+    .replace(/^PrimalItemAmmo_?/, '')
+    .replace(/^PrimalItemConsumable_?/, '')
+    .replace(/^PrimalItemResource_?/, '')
+    .replace(/^PrimalItem_?Weapon/, '')
+    .replace(/^PrimalItem_?Armor_?/, '')
+    .replace(/^PrimalItem_?/, '')
+    .replace(/_ASA$/, '')
+    .replace(/_Tek$/, ' Tek')
+    .replace(/_C$/, '')
+    .replace(/_/g, ' ');
+  // Split CamelCase, but keep acronyms intact.
+  n = n.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim();
+  // Specific tidy-ups
+  n = n.replace(/\bSoup\b/g, 'Soup').replace(/\bKibble Base\b/g, 'Kibble');
+  return n;
+}
+
+// ---------- Compute drops ----------
+const raw = document.getElementById('loot-data').textContent;
+const m = raw.match(/ItemSets[:=]\s*\(\(/);
+const start = m.index + m[0].length - 2;
+const end = findClose(raw, start);
+const sets = splitTopLevel(raw.slice(start + 1, end)).map(parseStruct);
+
+const drops = [];
+let totalSlots = 0;
+for (const set of sets) {
+  const entries = set.ItemEntries || [];
+  if (!entries.length) continue;
+  const minN = set.MinNumItems ?? 1, maxN = set.MaxNumItems ?? 1;
+  const avgN = (minN + maxN) / 2;
+  const ewT = entries.reduce((a, e) => a + (e.EntryWeight ?? 1), 0);
+  totalSlots += avgN;
+  for (const e of entries) {
+    const pEntry = Math.min(1, ((e.EntryWeight ?? 1) / ewT) * avgN);
+    const items = e.Items || [];
+    const wRaw = e.ItemsWeights || [];
+    const w = items.map((_, k) => (typeof wRaw[k] === 'number' ? wRaw[k] : 1));
+    const wT = w.reduce((a, b) => a + b, 0);
+    const minQ = e.MinQuantity ?? 1, maxQ = e.MaxQuantity ?? minQ;
+    const avgQty = (minQ + maxQ) / 2;
+    const bp = e.ChanceToBeBlueprintOverride ?? 0;
+    const force = e.bForceBlueprint ?? false;
+    for (let j = 0; j < items.length; ++j) {
+      const internal = items[j].split('/').pop().split('.')[0];
+      const pSlot = w[j] / wT;
+      const pPick = pEntry * pSlot;
+      drops.push({
+        item: prettyName(internal),
+        internal,
+        entry: e.ItemEntryName || '(unnamed)',
+        set: set.SetName || '(unnamed)',
+        avgQty,
+        pPick, pPickItem: force ? 0 : pPick * (1 - bp), pPickBp: force ? pPick : pPick * bp,
+        pSlot, pSlotItem: force ? 0 : pSlot * (1 - bp), pSlotBp: force ? pSlot : pSlot * bp,
+        ePer: pPick * avgQty,
+        ePerItem: force ? 0 : pPick * avgQty * (1 - bp),
+        ePerBp:   force ? pPick * avgQty : pPick * avgQty * bp,
+      });
+    }
+  }
+}
+
+document.getElementById('poolSize').textContent = drops.length;
+document.getElementById('totalSlots').textContent = totalSlots.toFixed(0);
+
+// ---------- View / state ----------
+const VIEWS = {
+  perCrate:    { help: '"Open one crate, this is the chance the item shows up."' },
+  perItemSlot: { help: 'Within its category (e.g. Saddles), this item\'s share of picks.' },
+  ePer100:     { help: 'Average count you\'d pull from 100 crates, including stack sizes.' },
+  cratesNeeded:{ help: 'Crates to open for ~90% confidence of seeing at least one.' },
+};
+let sort = { k: 'val', dir: 'desc' };
+let activeCat = '';
+
+function valueFor(d, view, form) {
+  const pP = form === 'item' ? d.pPickItem : form === 'bp' ? d.pPickBp : d.pPick;
+  const pS = form === 'item' ? d.pSlotItem : form === 'bp' ? d.pSlotBp : d.pSlot;
+  const eP = form === 'item' ? d.ePerItem  : form === 'bp' ? d.ePerBp  : d.ePer;
+  switch (view) {
+    case 'perCrate':     return pP;
+    case 'perItemSlot':  return pS;
+    case 'ePer100':      return eP * 100;
+    case 'cratesNeeded': return pP > 0 ? Math.ceil(Math.log(0.1) / Math.log(1 - pP)) : Infinity;
+  }
+}
+function fmt(val, view) {
+  if (!isFinite(val)) return '—';
+  if (view === 'ePer100')      return val.toFixed(2);
+  if (view === 'cratesNeeded') return val >= 100000 ? '100k+' : Math.round(val).toLocaleString();
+  return (val * 100).toFixed(2) + '%';
+}
+function bar(val, view, max) {
+  if (!isFinite(val) || max <= 0) return '';
+  const w = view === 'cratesNeeded' ? Math.max(0, 100 - (val / max) * 100) : (val / max) * 100;
+  return `<span class="meter"><div style="width:${w.toFixed(1)}%"></div></span>`;
+}
+
+const tbody = document.querySelector('#t tbody');
+const ths = document.querySelectorAll('#t th');
+const empty = document.getElementById('empty');
+
+function render() {
+  const view = document.getElementById('view').value;
+  const form = document.getElementById('form').value;
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  document.getElementById('viewHelp').textContent = VIEWS[view].help;
+
+  let rows = drops.map(d => ({ ...d, val: valueFor(d, view, form) }));
+  rows = rows.filter(d => !activeCat || d.entry === activeCat);
+  rows = rows.filter(d => !q || d.item.toLowerCase().includes(q) || d.entry.toLowerCase().includes(q) || d.internal.toLowerCase().includes(q));
+  rows.sort((a, b) => {
+    let av = a[sort.k], bv = b[sort.k];
+    if (typeof av === 'string') return sort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    if (!isFinite(av)) av = sort.dir === 'asc' ? Infinity : -Infinity;
+    if (!isFinite(bv)) bv = sort.dir === 'asc' ? Infinity : -Infinity;
+    return sort.dir === 'asc' ? av - bv : bv - av;
+  });
+  ths.forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+  const active = [...ths].find(th => th.dataset.k === sort.k);
+  if (active) active.classList.add(sort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+
+  const maxVal = rows.reduce((m, d) => isFinite(d.val) ? Math.max(m, d.val) : m, 0);
+  document.getElementById('visibleCount').textContent = rows.length;
+  empty.hidden = rows.length > 0;
+  tbody.innerHTML = rows.map(d => {
+    const catClass = 'cat-' + d.entry.replace(/[^A-Za-z0-9]+/g, '-').replace(/-$/, '');
+    return `<tr>
+      <td class="item" title="${d.internal}">${d.item}</td>
+      <td class="cat"><span class="cat-badge ${catClass}">${d.entry}</span></td>
+      <td class="num">${bar(d.val, view, maxVal)}${fmt(d.val, view)}</td>
+    </tr>`;
+  }).join('');
+}
+
+ths.forEach(th => th.addEventListener('click', () => {
+  const k = th.dataset.k;
+  if (sort.k === k) sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
+  else { sort.k = k; sort.dir = (k === 'item' || k === 'entry') ? 'asc' : 'desc'; }
+  render();
+}));
+document.querySelectorAll('.pill-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeCat = btn.dataset.cat;
+    render();
+  });
+});
+['q', 'view', 'form'].forEach(id => document.getElementById(id).addEventListener('input', render));
+render();
+</script>
+</body>
+</html>
